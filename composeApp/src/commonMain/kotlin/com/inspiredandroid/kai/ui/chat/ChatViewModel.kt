@@ -67,6 +67,7 @@ class ChatViewModel(
         selectService = ::selectService,
         loadConversation = ::loadConversation,
         deleteConversation = ::deleteConversation,
+        renameConversation = ::renameConversation,
         clearUnreadHeartbeat = ::clearUnreadHeartbeat,
         clearSnackbar = ::clearSnackbar,
         undoDeleteConversation = ::undoDeleteConversation,
@@ -473,6 +474,17 @@ class ChatViewModel(
             delay(4.seconds)
             dataRepository.deleteConversation(id)
             _state.update { it.copy(pendingConversationDeletion = null) }
+        }
+    }
+
+    private fun renameConversation(id: String, title: String) {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return
+        // A pending delete is still cancelable, so renaming it would be a no-op
+        // on a doomed conversation; let the delete finish first.
+        commitPendingConversationDeletion()
+        viewModelScope.launch(backgroundDispatcher) {
+            dataRepository.renameConversation(id, trimmed)
         }
     }
 

@@ -5,6 +5,7 @@ package com.inspiredandroid.kai.ui.chat.composables
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,16 +36,21 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Alignment.Companion.CenterEnd
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.inspiredandroid.kai.ui.KaiOutlinedTextField
 import com.inspiredandroid.kai.ui.chat.ChatActions
 import com.inspiredandroid.kai.ui.chat.ConversationSummary
 import com.inspiredandroid.kai.ui.components.VerticalScrollbarForList
@@ -53,7 +60,12 @@ import kai.composeapp.generated.resources.Res
 import kai.composeapp.generated.resources.chat_history_delete_content_description
 import kai.composeapp.generated.resources.chat_history_empty
 import kai.composeapp.generated.resources.chat_history_heartbeat_label
+import kai.composeapp.generated.resources.chat_history_rename_cancel
+import kai.composeapp.generated.resources.chat_history_rename_label
+import kai.composeapp.generated.resources.chat_history_rename_save
+import kai.composeapp.generated.resources.chat_history_rename_title
 import kai.composeapp.generated.resources.chat_history_title
+import kai.composeapp.generated.resources.conversation_untitled
 import kai.composeapp.generated.resources.ic_history
 import kai.composeapp.generated.resources.snackbar_conversation_deleted
 import kai.composeapp.generated.resources.snackbar_undo
@@ -89,6 +101,8 @@ internal fun ChatHistorySheet(
         val snackbarHostState = remember { SnackbarHostState() }
         val deletedMessage = stringResource(Res.string.snackbar_conversation_deleted)
         val undoLabel = stringResource(Res.string.snackbar_undo)
+        val untitledLabel = stringResource(Res.string.conversation_untitled)
+        var renameTarget by remember { mutableStateOf<ConversationSummary?>(null) }
 
         LaunchedEffect(pendingConversationDeletion) {
             if (pendingConversationDeletion == null) return@LaunchedEffect
@@ -148,11 +162,20 @@ internal fun ChatHistorySheet(
                                     modifier = borderModifier
                                         .fillMaxWidth()
                                         .handCursor()
-                                        .clickable {
-                                            onConversationSelected()
-                                            actions.loadConversation(conversation.id)
-                                            onDismiss()
-                                        }
+                                        .combinedClickable(
+                                            onClick = {
+                                                onConversationSelected()
+                                                actions.loadConversation(conversation.id)
+                                                onDismiss()
+                                            },
+                                            onLongClick = {
+                                                // Heartbeat rows have no stored title to edit: their
+                                                // summary title is forced empty by the view model.
+                                                if (!conversation.isHeartbeat) {
+                                                    renameTarget = conversation
+                                                }
+                                            },
+                                        )
                                         .padding(vertical = 8.dp, horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -233,7 +256,60 @@ internal fun ChatHistorySheet(
                 Snackbar(snackbarData = data)
             }
         }
+
+        renameTarget?.let { target ->
+            RenameConversationDialog(
+                // Untitled conversations display a localized placeholder; don't
+                // seed the field with it, or saving would store "Untitled" as a name.
+                initialTitle = target.title.takeIf { it != untitledLabel }.orEmpty(),
+                onDismiss = { renameTarget = null },
+                onConfirm = { newTitle ->
+                    actions.renameConversation(target.id, newTitle)
+                    renameTarget = null
+                },
+            )
+        }
     }
+}
+
+@Composable
+private fun RenameConversationDialog(
+    initialTitle: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var title by remember(initialTitle) { mutableStateOf(initialTitle) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.chat_history_rename_title)) },
+        text = {
+            KaiOutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text(stringResource(Res.string.chat_history_rename_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(title.trim()) },
+                enabled = title.isNotBlank(),
+                modifier = Modifier.handCursor(),
+            ) {
+                Text(stringResource(Res.string.chat_history_rename_save))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.handCursor(),
+            ) {
+                Text(stringResource(Res.string.chat_history_rename_cancel))
+            }
+        },
+    )
 }
 
 private fun formatDate(epochMillis: Long): String = try {

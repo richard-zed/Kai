@@ -39,6 +39,7 @@ Auto-derived from the first user message when a conversation is saved for the fi
 - Each item shows the title and formatted date
 - Non-interactive conversations are outlined with a primary-colored border; interactive-mode conversations get an animated gradient border. The active conversation's title is rendered in the primary color (inactive titles use onBackground)
 - Tapping an item loads that conversation and dismisses the sheet
+- Long-pressing a row opens a rename dialog prefilled with the current title; saving rewrites the stored title without changing `updatedAt`, so the sort order is unaffected. Blank names cannot be saved, and heartbeat rows are skipped because they display no title
 - Each item has a delete button that defers deletion with a snackbar "Undo" option (~4 seconds) before the conversation is permanently removed. The snackbar appears inside the history sheet so it remains visible while the sheet is open, and the sheet stays open so multiple conversations can be deleted in sequence
 - Deleting the active conversation clears the chat
 - Heartbeat conversations are included in the history list with a "Heartbeat" label badge, and can also be accessed via the heartbeat banner
@@ -124,7 +125,7 @@ Multiple files can be attached to a single prompt. Each file is added one at a t
 - **Input**: text field, send/stop button, attachment button, file chip
 - **Empty state**: animated logo + welcome message
 - **Drag-and-drop**: supported for file attachments
-- **History sheet**: bottom sheet listing saved conversations with title, date, active highlight, and delete
+- **History sheet**: bottom sheet listing saved conversations with title, date, active highlight, delete, and rename (long-press a row)
 
 ## Key Files
 

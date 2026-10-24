@@ -1686,6 +1686,10 @@ class RemoteDataRepository(
         }
     }
 
+    override fun renameConversation(id: String, title: String) {
+        conversationStorage.renameConversation(id, title.trim())
+    }
+
     override suspend fun deleteConversation(id: String) {
         if (_currentConversationId.value == id) {
             setCurrentConversationId(null)

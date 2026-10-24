@@ -95,6 +95,25 @@ class ConversationStorage(
         return listOf(last.withText(last.text.takeLast(limit)))
     }
 
+    /**
+     * Replace the stored title for [conversationId]. Touches only the title —
+     * `updatedAt` is left alone so renaming doesn't reorder the history list.
+     */
+    fun renameConversation(id: String, title: String) {
+        var changed: Conversation? = null
+        mutableConversations.update { current ->
+            val idx = current.indexOfFirst { it.id == id }
+            if (idx < 0 || current[idx].title == title) {
+                current
+            } else {
+                val updated = current[idx].copy(title = title)
+                changed = updated
+                current.toMutableList().apply { set(idx, updated) }
+            }
+        }
+        changed?.let { persistence.save(it, mutableConversations.value) }
+    }
+
     fun deleteConversation(id: String) {
         mutableConversations.update { current ->
             current.filter { it.id != id }

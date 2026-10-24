@@ -81,6 +81,42 @@ class ConversationStorageTest {
     }
 
     @Test
+    fun `renameConversation updates the title and persists it`() {
+        val settings = MapSettings()
+        val storage = createStorage(settings)
+        storage.saveConversation(conversation("c1", "Hello"))
+
+        storage.renameConversation("c1", "Renamed")
+
+        assertEquals("Renamed", storage.conversations.value.single().title)
+
+        val reloaded = createStorage(settings)
+        reloaded.loadConversations()
+        assertEquals("Renamed", reloaded.conversations.value.single().title)
+    }
+
+    @Test
+    fun `renameConversation leaves updatedAt untouched so history order is stable`() {
+        val storage = createStorage()
+        storage.saveConversation(conversation("c1", "Hello"))
+        val before = storage.conversations.value.single().updatedAt
+
+        storage.renameConversation("c1", "Renamed")
+
+        assertEquals(before, storage.conversations.value.single().updatedAt)
+    }
+
+    @Test
+    fun `renameConversation is a no-op for unknown conversations`() {
+        val storage = createStorage()
+        storage.saveConversation(conversation("c1", "Hello"))
+
+        storage.renameConversation("missing", "Renamed")
+
+        assertEquals("Title c1", storage.conversations.value.single().title)
+    }
+
+    @Test
     fun `updateShellTranscript trims older lines beyond the char budget`() {
         val settings = MapSettings()
         val storage = createStorage(settings)
