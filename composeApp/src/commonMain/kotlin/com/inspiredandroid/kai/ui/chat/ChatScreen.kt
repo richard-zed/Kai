@@ -52,10 +52,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -671,22 +673,29 @@ private fun ChatModeScreen(
                             val listState = rememberLazyListState()
                             val componentScope = rememberCoroutineScope()
 
-                            LaunchedEffect(uiState.history.size) {
+                            // Tracks whether the user is reading at the bottom. Kept in state
+                            // rather than read from layoutInfo inside the effect below, because
+                            // layoutInfo still describes the frame BEFORE this append.
+                            var wasAtBottom by remember { mutableStateOf(true) }
+                            var previousCount by remember { mutableIntStateOf(-1) }
+
+                            LaunchedEffect(uiState.history.size, uiState.isLoading) {
                                 // Capture history at effect start to prevent race conditions
                                 val history = uiState.history
                                 if (history.isNotEmpty()) {
-                                    // Only follow new messages when the user is already at the
-                                    // bottom: requestScrollToItem forces a jump on every history
-                                    // change, which yanked the view back down mid-read. Two items of
-                                    // slack absorb the entry that was just appended (already counted
-                                    // by totalItemsCount, not yet laid out as visible).
-                                    val layoutInfo = listState.layoutInfo
-                                    val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                                    val isAtBottom = layoutInfo.totalItemsCount == 0 ||
-                                        lastVisibleIndex >= layoutInfo.totalItemsCount - 2
-                                    if (isAtBottom) {
-                                        listState.requestScrollToItem(history.lastIndex)
+                                    // Follow new content when the user just sent a message, or when
+                                    // they were already parked at the bottom. Sending is detected
+                                    // via isLoading rather than list geometry: the item count read
+                                    // here is still the pre-append one, so a geometry check
+                                    // compares a stale visible index against a grown total and
+                                    // reads false, which is why sending never scrolled.
+                                    val grew = previousCount in 0 until history.size
+                                    val sentByUser = uiState.isLoading
+                                    if (sentByUser || (grew && wasAtBottom)) {
+                                        listState.animateScrollToItem(history.lastIndex)
+                                        wasAtBottom = true
                                     }
+                                    previousCount = history.size
                                     val lastMessage = history.last()
                                     if (uiState.isSpeechOutputEnabled && lastMessage.role == History.Role.ASSISTANT) {
                                         componentScope.launch(getBackgroundDispatcher()) {
@@ -808,6 +817,28 @@ private fun ChatModeScreen(
                                     }
                                 }
                                 byAnswerId to suppressed
+                            }
+
+                            // Keep wasAtBottom in sync with laid-out state. This is the only
+                            // place layoutInfo is trustworthy, because it runs after composition.
+                            LaunchedEffect(listState) {
+                                snapshotFlow {
+                                    val info = listState.layoutInfo
+                                    val last = info.visibleItemsInfo.lastOrNull()
+                                    last == null || last.index >= info.totalItemsCount - 1
+                                }.collect { atBottom -> wasAtBottom = atBottom }
+                            }
+
+                            // Opening a conversation (from history, the sandbox, or a fresh send
+                            // into a new chat) builds list state at index 0, which left the chat
+                            // scrolled to the oldest message. Land on the newest one instead.
+                            LaunchedEffect(uiState.currentConversationId, uiState.history.size) {
+                                if (uiState.history.isNotEmpty() &&
+                                    listState.layoutInfo.totalItemsCount > 0
+                                ) {
+                                    listState.scrollToItem(uiState.history.lastIndex)
+                                    wasAtBottom = true
+                                }
                             }
 
                             val showScrollToBottom by remember {
