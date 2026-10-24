@@ -1,15 +1,32 @@
 package com.inspiredandroid.kai.network.dtos.openaicompatible
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class OpenAICompatibleChatRequestDto(
     val messages: List<Message>,
     val model: String? = null,
     val tools: List<Tool>? = null,
+    // DeepSeek V4+ runs in thinking mode by default and bills the reasoning tokens, so
+    // `{"type":"disabled"}` turns it off to save them. Must stay omitted for every other
+    // provider (strict ones reject unknown fields) - hence @EncodeDefault(NEVER), because
+    // the shared client is configured with encodeDefaults = true and would otherwise
+    // serialise this as `"thinking": null`.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val thinking: Thinking? = null,
 ) {
+    @Serializable
+    data class Thinking(val type: String) {
+        companion object {
+            val DISABLED = Thinking(type = "disabled")
+        }
+    }
+
     @Serializable
     data class Message(
         val role: String, // "system", "user", "assistant", "tool"

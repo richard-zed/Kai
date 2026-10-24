@@ -275,6 +275,11 @@ class Requests {
                         messages = messages,
                         model = model,
                         tools = tools.toRequestTools { it.toRequestTool() },
+                        thinking = if (service == Service.DeepSeek) {
+                            OpenAICompatibleChatRequestDto.Thinking.DISABLED
+                        } else {
+                            null
+                        },
                     ),
                 )
             }
