@@ -675,7 +675,18 @@ private fun ChatModeScreen(
                                 // Capture history at effect start to prevent race conditions
                                 val history = uiState.history
                                 if (history.isNotEmpty()) {
-                                    listState.requestScrollToItem(history.lastIndex)
+                                    // Only follow new messages when the user is already at the
+                                    // bottom: requestScrollToItem forces a jump on every history
+                                    // change, which yanked the view back down mid-read. Two items of
+                                    // slack absorb the entry that was just appended (already counted
+                                    // by totalItemsCount, not yet laid out as visible).
+                                    val layoutInfo = listState.layoutInfo
+                                    val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                                    val isAtBottom = layoutInfo.totalItemsCount == 0 ||
+                                        lastVisibleIndex >= layoutInfo.totalItemsCount - 2
+                                    if (isAtBottom) {
+                                        listState.requestScrollToItem(history.lastIndex)
+                                    }
                                     val lastMessage = history.last()
                                     if (uiState.isSpeechOutputEnabled && lastMessage.role == History.Role.ASSISTANT) {
                                         componentScope.launch(getBackgroundDispatcher()) {
