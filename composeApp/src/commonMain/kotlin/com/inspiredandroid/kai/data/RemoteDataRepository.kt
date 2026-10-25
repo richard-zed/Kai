@@ -869,8 +869,7 @@ class RemoteDataRepository(
         // still null, so per-conversation routing (e.g. the sandbox shell)
         // falls through to a shared default — which both makes the new chat
         // invisible in the Terminal session picker and lets unrelated callers
-        // collide on the same shell mutex. Persistence is deferred to the
-        // existing saveCurrentConversation() flow that runs after the response.
+        // collide on the same shell mutex. Row is written once a message lands.
         if (_currentConversationId.value == null) {
             setCurrentConversationId(Uuid.random().toString())
         }
@@ -938,6 +937,8 @@ class RemoteDataRepository(
                 }
             }
         }
+        // Durable before anything can hang or be killed.
+        saveCurrentConversation()
 
         compactHistoryIfNeeded()
 
@@ -1217,6 +1218,8 @@ class RemoteDataRepository(
                     )
                 }
             }
+            // Reply is on screen; tools below are slow.
+            saveCurrentConversation()
 
             val toolResults = executeToolCallsInParallel(
                 result.toolCalls.map { Triple(it.id, it.name, it.arguments) },
@@ -1240,6 +1243,8 @@ class RemoteDataRepository(
                     }
                 }
             }
+            // Keep results already returned.
+            saveCurrentConversation()
         }
     }
 
