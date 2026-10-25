@@ -197,6 +197,9 @@ class PersistentSandboxShell(
         // the very first command has something to signal. Leading \n matches
         // the sentinel pattern below — flushes any partial line first.
         h.writeLine("printf '\\n\\036KAIBASHPID\\037%d\\036\\n' \"\$\$\" >&2")
+        // User env: --norc means no rcfile runs, so source ours explicitly.
+        // Optional; missing file is not an error. Re-applied on every restart.
+        h.writeLine("[ -f /root/.kai_env ] && . /root/.kai_env")
         watchdog = scope.launch {
             h.awaitExit()
             // Shell died. Wake up any in-flight command with a shellDied result
