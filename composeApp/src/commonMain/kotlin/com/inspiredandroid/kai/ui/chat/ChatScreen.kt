@@ -124,6 +124,7 @@ import kai.composeapp.generated.resources.scroll_to_bottom_content_description
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import nl.marc_apps.tts.TextToSpeechInstance
 import nl.marc_apps.tts.errors.TextToSpeechSynthesisInterruptedError
@@ -832,13 +833,20 @@ private fun ChatModeScreen(
                             // Opening a conversation (from history, the sandbox, or a fresh send
                             // into a new chat) builds list state at index 0, which left the chat
                             // scrolled to the oldest message. Land on the newest one instead.
-                            LaunchedEffect(uiState.currentConversationId, uiState.history.size) {
-                                if (uiState.history.isNotEmpty() &&
-                                    listState.layoutInfo.totalItemsCount > 0
-                                ) {
-                                    listState.scrollToItem(uiState.history.lastIndex)
-                                    wasAtBottom = true
-                                }
+                            //
+                            // Keyed on the conversation ALONE. Keying on history.size as well
+                            // re-ran this on every append, so anything that added messages
+                            // mid-conversation (a shell tool result, a resubmit) yanked the
+                            // view back to the bottom even when the user had scrolled up.
+                            // Items are not laid out on the first frame, so wait for
+                            // totalItemsCount rather than re-keying on the count.
+                            LaunchedEffect(uiState.currentConversationId) {
+                                if (uiState.history.isEmpty()) return@LaunchedEffect
+                                snapshotFlow { listState.layoutInfo.totalItemsCount }
+                                    .first { it > 0 }
+                                listState.scrollToItem(uiState.history.lastIndex)
+                                wasAtBottom = true
+                                previousCount = uiState.history.size
                             }
 
                             val showScrollToBottom by remember {
