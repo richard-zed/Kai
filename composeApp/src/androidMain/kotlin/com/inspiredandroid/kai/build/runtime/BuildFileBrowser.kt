@@ -2,6 +2,7 @@ package com.inspiredandroid.kai.build.runtime
 
 import android.content.Context
 import com.inspiredandroid.kai.FileBrowserSource
+import com.inspiredandroid.kai.FileReadStream
 import com.inspiredandroid.kai.SandboxFileEntry
 import com.inspiredandroid.kai.TextFileResult
 import com.inspiredandroid.kai.linux.GuestFileMap
@@ -74,13 +75,38 @@ class BuildFileBrowser(
         }
     }
 
-    override suspend fun readFileBytes(path: String): ByteArray? = withContext(Dispatchers.IO) {
+    override suspend fun openReadStream(path: String): FileReadStream? = withContext(Dispatchers.IO) {
         val file = resolve(path) ?: return@withContext null
         if (!file.isFile) return@withContext null
-        try {
-            file.readBytes()
+        // Open eagerly so an unreadable file fails here, not mid-copy after the
+        // save dialog has already been answered and a partial file written.
+        val input = try {
+            file.inputStream()
         } catch (e: IOException) {
-            null
+            return@withContext null
+        }
+        object : FileReadStream {
+            override val sizeBytes: Long? = file.length().takeIf { it >= 0 }
+            private var closed = false
+
+            override suspend fun readChunk(into: ByteArray): Int = withContext(Dispatchers.IO) {
+                if (closed) return@withContext -1
+                try {
+                    input.read(into)
+                } catch (e: IOException) {
+                    -1
+                }
+            }
+
+            override fun close() {
+                if (closed) return
+                closed = true
+                try {
+                    input.close()
+                } catch (e: IOException) {
+                    // Nothing useful to do; the copy outcome is already decided.
+                }
+            }
         }
     }
 
