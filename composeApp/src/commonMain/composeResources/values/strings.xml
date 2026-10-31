@@ -54,7 +54,6 @@
     <string name="chat_history_delete_content_description">Delete conversation</string>
     <string name="chat_history_empty">No saved conversations</string>
     <string name="chat_history_heartbeat_label">Heartbeat</string>
-    <string name="chat_history_rename_title">Rename conversation</string>
     <string name="chat_history_rename_label">Name</string>
     <string name="chat_history_rename_save">Save</string>
     <string name="chat_history_rename_cancel">Cancel</string>

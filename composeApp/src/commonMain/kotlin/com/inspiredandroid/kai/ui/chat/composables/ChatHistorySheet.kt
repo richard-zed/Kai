@@ -63,7 +63,6 @@ import kai.composeapp.generated.resources.chat_history_heartbeat_label
 import kai.composeapp.generated.resources.chat_history_rename_cancel
 import kai.composeapp.generated.resources.chat_history_rename_label
 import kai.composeapp.generated.resources.chat_history_rename_save
-import kai.composeapp.generated.resources.chat_history_rename_title
 import kai.composeapp.generated.resources.chat_history_title
 import kai.composeapp.generated.resources.conversation_untitled
 import kai.composeapp.generated.resources.ic_history
@@ -282,7 +281,6 @@ private fun RenameConversationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.chat_history_rename_title)) },
         text = {
             KaiOutlinedTextField(
                 value = title,
