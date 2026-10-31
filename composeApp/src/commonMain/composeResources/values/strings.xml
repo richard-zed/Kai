@@ -400,6 +400,7 @@
     <string name="sandbox_files_open_failed">Could not open externally</string>
     <string name="sandbox_files_action_open_external">Open with app</string>
     <string name="sandbox_files_action_open_as_text">Open as text</string>
+    <string name="sandbox_files_action_save_to_device">Save to device</string>
     <string name="sandbox_files_action_rename">Rename</string>
     <string name="sandbox_files_action_delete">Delete</string>
     <string name="sandbox_files_action_more">More actions</string>
@@ -429,6 +430,8 @@
     <string name="sandbox_files_action_import">Import file</string>
     <string name="sandbox_files_import_success">File imported</string>
     <string name="sandbox_files_import_failed">Import failed</string>
+    <string name="sandbox_files_save_to_device_success">Saved to device</string>
+    <string name="sandbox_files_save_to_device_failed">Could not save to device</string>
     <string name="kai_ui_render_failed">Failed to render UI</string>
     <string name="kai_ui_code_copy">Copy</string>
     <string name="image_viewer_close">Close</string>

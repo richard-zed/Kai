@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.inspiredandroid.kai.FileBrowserSource
 import com.inspiredandroid.kai.SandboxFileEntry
 import com.inspiredandroid.kai.TextFileResult
+import com.inspiredandroid.kai.saveFileToDevice
 import io.github.vinceglb.filekit.PlatformFile
 import kai.composeapp.generated.resources.Res
 import kai.composeapp.generated.resources.sandbox_files_delete_failed
@@ -20,6 +21,8 @@ import kai.composeapp.generated.resources.sandbox_files_rename_failed
 import kai.composeapp.generated.resources.sandbox_files_rename_success
 import kai.composeapp.generated.resources.sandbox_files_save_failed
 import kai.composeapp.generated.resources.sandbox_files_save_success
+import kai.composeapp.generated.resources.sandbox_files_save_to_device_failed
+import kai.composeapp.generated.resources.sandbox_files_save_to_device_success
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -215,6 +218,42 @@ class SandboxFileBrowserViewModel(
             if (result.isFailure) {
                 _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_open_failed) }
             }
+        }
+    }
+
+    /**
+     * Copies [path] out of the sandbox to device storage through the platform save
+     * dialog. Uses [FileBrowserSource.readFileBytes] rather than readTextFile:
+     * the text path caps at MAX_BROWSER_TEXT_BYTES and decodes lossily, which
+     * would truncate a large file and corrupt a binary one on the way out.
+     */
+    fun saveToDevice(path: String) {
+        viewModelScope.launch {
+            val bytes = files.readFileBytes(path)
+            if (bytes == null) {
+                _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_save_to_device_failed) }
+                return@launch
+            }
+            val name = path.substringAfterLast('/')
+            if (name.isEmpty()) {
+                _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_save_to_device_failed) }
+                return@launch
+            }
+            // Split at the LAST dot, but only when it is not the first character:
+            // a leading dot names a hidden file, not an extension, so ".bashrc"
+            // is entirely a base name and must not save as base "" + ext "bashrc".
+            val dot = name.lastIndexOf('.')
+            val baseName: String
+            val extension: String
+            if (dot > 0) {
+                baseName = name.substring(0, dot)
+                extension = name.substring(dot + 1)
+            } else {
+                baseName = name
+                extension = ""
+            }
+            saveFileToDevice(bytes = bytes, baseName = baseName, extension = extension)
+            _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_save_to_device_success) }
         }
     }
 

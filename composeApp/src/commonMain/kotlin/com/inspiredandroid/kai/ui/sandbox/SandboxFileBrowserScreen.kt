@@ -68,6 +68,7 @@ import kai.composeapp.generated.resources.sandbox_files_action_more
 import kai.composeapp.generated.resources.sandbox_files_action_open_as_text
 import kai.composeapp.generated.resources.sandbox_files_action_open_external
 import kai.composeapp.generated.resources.sandbox_files_action_rename
+import kai.composeapp.generated.resources.sandbox_files_action_save_to_device
 import kai.composeapp.generated.resources.sandbox_files_delete_confirm
 import kai.composeapp.generated.resources.sandbox_files_delete_message_directory
 import kai.composeapp.generated.resources.sandbox_files_delete_message_file
@@ -159,6 +160,7 @@ fun SandboxFilesContent(
                     onOpen = viewModel::openEntry,
                     onOpenExternal = viewModel::openInExternalApp,
                     onOpenAsText = viewModel::openInEditor,
+                    onSaveToDevice = viewModel::saveToDevice,
                     onRename = viewModel::requestRename,
                     onDelete = viewModel::requestDelete,
                 )
@@ -310,6 +312,7 @@ private fun FileList(
     onOpen: (SandboxFileEntry) -> Unit,
     onOpenExternal: (String) -> Unit,
     onOpenAsText: (String) -> Unit,
+    onSaveToDevice: (String) -> Unit,
     onRename: (SandboxFileEntry) -> Unit,
     onDelete: (SandboxFileEntry) -> Unit,
 ) {
@@ -347,6 +350,7 @@ private fun FileList(
                 onClick = { onOpen(entry) },
                 onOpenExternal = { onOpenExternal(entry.path) },
                 onOpenAsText = { onOpenAsText(entry.path) },
+                onSaveToDevice = { onSaveToDevice(entry.path) },
                 onRename = { onRename(entry) },
                 onDelete = { onDelete(entry) },
             )
@@ -361,6 +365,7 @@ private fun FileRow(
     onClick: () -> Unit,
     onOpenExternal: () -> Unit,
     onOpenAsText: () -> Unit,
+    onSaveToDevice: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -410,6 +415,7 @@ private fun FileRow(
                     isDirectory = entry.isDirectory,
                     onOpenExternal = onOpenExternal,
                     onOpenAsText = onOpenAsText,
+                    onSaveToDevice = onSaveToDevice,
                     onRename = onRename,
                     onDelete = onDelete,
                 )
@@ -423,6 +429,7 @@ private fun FileRowMenu(
     isDirectory: Boolean,
     onOpenExternal: () -> Unit,
     onOpenAsText: () -> Unit,
+    onSaveToDevice: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -459,6 +466,16 @@ private fun FileRowMenu(
                     onClick = {
                         expanded = false
                         onOpenAsText()
+                    },
+                    modifier = Modifier.handCursor(),
+                )
+                // The way out: copy the bytes to device storage as-is. Files only —
+                // there is nothing to save for a directory.
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.sandbox_files_action_save_to_device)) },
+                    onClick = {
+                        expanded = false
+                        onSaveToDevice()
                     },
                     modifier = Modifier.handCursor(),
                 )
