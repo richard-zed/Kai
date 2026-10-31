@@ -51,14 +51,20 @@ import dev.spght.encryptedprefs.MasterKey
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.openFileSaver
+import io.github.vinceglb.filekit.sink
 import io.github.vinceglb.filekit.write
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.okhttp.OkHttp
+import java.io.IOException
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.io.RawSink
+import kotlinx.io.buffered
 import org.koin.java.KoinJavaComponent
 import org.koin.java.KoinJavaComponent.inject
-import kotlin.coroutines.CoroutineContext
 
 actual fun httpClient(config: HttpClientConfig<*>.() -> Unit): HttpClient = HttpClient(OkHttp) {
     config(this)
@@ -300,3 +306,39 @@ actual suspend fun saveFileToDevice(bytes: ByteArray, baseName: String, extensio
     val file = FileKit.openFileSaver(suggestedName = baseName, defaultExtension = extension)
     file?.write(bytes)
 }
+
+actual suspend fun saveFileToDeviceStream(
+    baseName: String,
+    extension: String,
+    write: suspend (RawSink) -> Unit,
+): SaveResult {
+    // openFileSaver suspends on the platform dialog; sink() is blocking I/O, so the
+    // whole thing runs off the main thread.
+    return withContext(Dispatchers.IO) {
+        val dest = FileKit.openFileSaver(suggestedName = baseName, defaultExtension = extension)
+            ?: return@withContext SaveResult.Cancelled
+        var wrote = false
+        try {
+            dest.sink().buffered().use { sink ->
+                write(sink)
+                sink.flush()
+            }
+            wrote = true
+            SaveResult.Saved
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            SaveResult.Failed
+        } finally {
+            // A half-written file that looks saved is worse than no file.
+            if (!wrote) {
+                try {
+                    dest.delete()
+                } catch (e: IOException) {
+                    // Best effort; the caller is being told the save failed anyway.
+                }
+            }
+        }
+    }
+}
+

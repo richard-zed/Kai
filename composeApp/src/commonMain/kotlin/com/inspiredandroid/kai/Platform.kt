@@ -10,6 +10,7 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import kotlin.coroutines.CoroutineContext
+import kotlinx.io.RawSink
 
 expect fun httpClient(config: HttpClientConfig<*>.() -> Unit = {}): HttpClient
 
@@ -82,6 +83,35 @@ expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 expect fun decodeToImageBitmap(bytes: ByteArray): ImageBitmap?
 
 expect suspend fun saveFileToDevice(bytes: ByteArray, baseName: String, extension: String)
+
+/**
+ * Why a streamed save ended. A bare Boolean would collapse "the user backed out"
+ * into "it failed", and those need different messages.
+ */
+sealed interface SaveResult {
+    data object Saved : SaveResult
+
+    /** The user dismissed the save dialog. Not an error; say nothing. */
+    data object Cancelled : SaveResult
+
+    /** The dialog was answered but the write did not complete. Any partial file is removed. */
+    data object Failed : SaveResult
+}
+
+/**
+ * Saves to device storage through the platform save dialog, streaming the content
+ * through [write] instead of taking it as one array. Use this for anything of
+ * unknown or unbounded size; [saveFileToDevice] needs the whole payload resident
+ * and OOMs on large files.
+ *
+ * On [SaveResult.Failed] any partial file is removed, so a half-written save never
+ * looks complete.
+ */
+expect suspend fun saveFileToDeviceStream(
+    baseName: String,
+    extension: String,
+    write: suspend (RawSink) -> Unit,
+): SaveResult
 
 /**
  * Fires a background push notification for a heartbeat that produced a non-trivial

@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.inspiredandroid.kai.FileBrowserSource
 import com.inspiredandroid.kai.SandboxFileEntry
+import com.inspiredandroid.kai.SaveResult
 import com.inspiredandroid.kai.TextFileResult
 import com.inspiredandroid.kai.saveFileToDevice
+import com.inspiredandroid.kai.saveFileToDeviceStream
 import io.github.vinceglb.filekit.PlatformFile
 import kai.composeapp.generated.resources.Res
 import kai.composeapp.generated.resources.sandbox_files_delete_failed
@@ -23,6 +25,8 @@ import kai.composeapp.generated.resources.sandbox_files_save_failed
 import kai.composeapp.generated.resources.sandbox_files_save_success
 import kai.composeapp.generated.resources.sandbox_files_save_to_device_failed
 import kai.composeapp.generated.resources.sandbox_files_save_to_device_success
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -223,17 +227,15 @@ class SandboxFileBrowserViewModel(
 
     /**
      * Copies [path] out of the sandbox to device storage through the platform save
-     * dialog. Uses [FileBrowserSource.readFileBytes] rather than readTextFile:
-     * the text path caps at MAX_BROWSER_TEXT_BYTES and decodes lossily, which
-     * would truncate a large file and corrupt a binary one on the way out.
+     * dialog.
+     *
+     * Streams in [COPY_CHUNK_BYTES] chunks rather than reading the file into a
+     * ByteArray: a large file would otherwise need several copies resident at once
+     * and the process would die with OutOfMemoryError, which is an Error and so
+     * slips past every Exception catch on the way out.
      */
     fun saveToDevice(path: String) {
         viewModelScope.launch {
-            val bytes = files.readFileBytes(path)
-            if (bytes == null) {
-                _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_save_to_device_failed) }
-                return@launch
-            }
             val name = path.substringAfterLast('/')
             if (name.isEmpty()) {
                 _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_save_to_device_failed) }
@@ -252,8 +254,37 @@ class SandboxFileBrowserViewModel(
                 baseName = name
                 extension = ""
             }
-            saveFileToDevice(bytes = bytes, baseName = baseName, extension = extension)
-            _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_save_to_device_success) }
+
+            val stream = files.openReadStream(path)
+            if (stream == null) {
+                _state.update { it.copy(snackbarMessage = Res.string.sandbox_files_save_to_device_failed) }
+                return@launch
+            }
+
+            val result = try {
+                saveFileToDeviceStream(baseName = baseName, extension = extension) { sink ->
+                    val buffer = ByteArray(COPY_CHUNK_BYTES)
+                    while (true) {
+                        // Cancellation must be able to interrupt a long copy.
+                        currentCoroutineContext().ensureActive()
+                        val read = stream.readChunk(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        sink.write(buffer, 0, read)
+                    }
+                }
+            } finally {
+                stream.close()
+            }
+
+            val message = when (result) {
+                SaveResult.Saved -> Res.string.sandbox_files_save_to_device_success
+                SaveResult.Failed -> Res.string.sandbox_files_save_to_device_failed
+                // Backing out of the dialog is a choice, not an error worth a toast.
+                SaveResult.Cancelled -> null
+            } ?: return@launch
+
+            _state.update { it.copy(snackbarMessage = message) }
         }
     }
 
@@ -469,3 +500,6 @@ class SandboxFileBrowserViewModel(
         return path
     }
 }
+
+/** Copy granularity for saving out of the sandbox; matches the sandbox import path. */
+private const val COPY_CHUNK_BYTES: Int = 64 * 1024

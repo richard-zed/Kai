@@ -6,6 +6,28 @@ import io.github.vinceglb.filekit.PlatformFile
 const val MAX_BROWSER_TEXT_BYTES: Int = 512_000
 
 /**
+ * A pull-based reader over a file's bytes, for copying it somewhere else without
+ * ever holding all of it in memory.
+ *
+ * [readChunk] fills a caller-owned buffer instead of allocating per chunk, so a
+ * full copy costs one buffer regardless of file size. Callers should reuse a single
+ * array across calls.
+ */
+interface FileReadStream {
+    /** Size in bytes when the source can report it, for naming and progress. */
+    val sizeBytes: Long?
+
+    /**
+     * Fills [into] and returns the byte count, or -1 at end of file. A short count
+     * before EOF is legal; callers loop until -1.
+     */
+    suspend fun readChunk(into: ByteArray): Int
+
+    /** Releases the handle. Safe to call more than once. */
+    fun close()
+}
+
+/**
  * Why a file could — or could not — be shown as text. A bare null would collapse
  * "too big", "not text" and "gone" into one indistinguishable outcome, which is
  * what the browser used to report to the user.
@@ -51,15 +73,17 @@ interface FileBrowserSource {
     ): TextFileResult
 
     /**
-     * Reads [path] verbatim, with no size cap and no decoding. This is the path for
-     * copying a file off the device: [readTextFile] caps at [MAX_BROWSER_TEXT_BYTES]
-     * and lossily replaces non-UTF-8 bytes, so it cannot round-trip a binary.
+     * Opens [path] for verbatim copying, with no size cap and no decoding. This is the
+     * path for copying a file off the device: [readTextFile] caps at
+     * [MAX_BROWSER_TEXT_BYTES] and lossily replaces non-UTF-8 bytes, so it cannot
+     * round-trip a binary.
      *
-     * Defaults to null, meaning "this source cannot produce raw bytes". Sources
-     * that back onto a real file override it; that keeps adding the method from
-     * breaking every other implementer of the interface.
+     * Unlike a read-into-memory call this never holds the whole file resident, so a
+     * multi-gigabyte file cannot OOM the process. Defaults to null, meaning "this
+     * source cannot produce raw bytes". Sources that back onto a real file override
+     * it; that keeps adding the method from breaking every other implementer.
      */
-    suspend fun readFileBytes(path: String): ByteArray? = null
+    suspend fun openReadStream(path: String): FileReadStream? = null
 
     suspend fun writeTextFile(path: String, content: String): Boolean
 

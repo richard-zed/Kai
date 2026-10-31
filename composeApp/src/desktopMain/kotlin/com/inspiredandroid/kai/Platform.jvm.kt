@@ -31,11 +31,14 @@ import io.github.vinceglb.filekit.write
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.cio.CIO
-import kotlinx.coroutines.Dispatchers
-import org.koin.java.KoinJavaComponent.inject
 import java.io.File
 import java.net.URI
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.io.Buffer
+import kotlinx.io.RawSink
+import kotlinx.io.readByteArray
+import org.koin.java.KoinJavaComponent.inject
 
 actual fun httpClient(config: HttpClientConfig<*>.() -> Unit): HttpClient = HttpClient(CIO) {
     config(this)
@@ -184,6 +187,20 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 actual suspend fun saveFileToDevice(bytes: ByteArray, baseName: String, extension: String) {
     val file = FileKit.openFileSaver(suggestedName = baseName, defaultExtension = extension)
     file?.write(bytes)
+}
+
+actual suspend fun saveFileToDeviceStream(
+    baseName: String,
+    extension: String,
+    write: suspend (RawSink) -> Unit,
+): SaveResult {
+    // This target has no streaming saver: buffer and reuse the all-in-memory path.
+    // Android is the only platform that streams; the rest just need to satisfy the
+    // expect so the shared code compiles.
+    val bytes = Buffer()
+    write(bytes)
+    saveFileToDevice(bytes = bytes.readByteArray(), baseName = baseName, extension = extension)
+    return SaveResult.Saved
 }
 
 /**

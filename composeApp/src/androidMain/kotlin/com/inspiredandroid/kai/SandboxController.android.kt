@@ -11,6 +11,9 @@ import com.inspiredandroid.kai.sandbox.openFileWithIntent
 import com.inspiredandroid.kai.sandbox.readFileAsText
 import com.inspiredandroid.kai.sandbox.toFileEntry
 import io.github.vinceglb.filekit.PlatformFile
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import kai.composeapp.generated.resources.Res
 import kai.composeapp.generated.resources.terminal_sandbox_not_ready
 import kotlinx.coroutines.CancellationException
@@ -25,9 +28,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.getString
 import org.koin.java.KoinJavaComponent.inject
-import java.io.File
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicBoolean
 
 actual fun createSandboxController(): SandboxController = AndroidSandboxController()
 
@@ -337,13 +337,38 @@ class AndroidSandboxController : SandboxController {
         readFileAsText(file, maxBytes, force)
     }
 
-    override suspend fun readFileBytes(path: String): ByteArray? = withContext(Dispatchers.IO) {
+    override suspend fun openReadStream(path: String): FileReadStream? = withContext(Dispatchers.IO) {
         val file = sandboxManager.fileMap().resolve(path) ?: return@withContext null
         if (!file.isFile) return@withContext null
-        try {
-            file.readBytes()
+        // Open eagerly so an unreadable file fails here, not mid-copy after the
+        // save dialog has already been answered and a partial file written.
+        val input = try {
+            file.inputStream()
         } catch (e: IOException) {
-            null
+            return@withContext null
+        }
+        object : FileReadStream {
+            override val sizeBytes: Long? = file.length().takeIf { it >= 0 }
+            private var closed = false
+
+            override suspend fun readChunk(into: ByteArray): Int = withContext(Dispatchers.IO) {
+                if (closed) return@withContext -1
+                try {
+                    input.read(into)
+                } catch (e: IOException) {
+                    -1
+                }
+            }
+
+            override fun close() {
+                if (closed) return
+                closed = true
+                try {
+                    input.close()
+                } catch (e: IOException) {
+                    // Nothing useful to do; the copy outcome is already decided.
+                }
+            }
         }
     }
 

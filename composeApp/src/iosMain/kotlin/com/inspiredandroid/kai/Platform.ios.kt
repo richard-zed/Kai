@@ -26,16 +26,19 @@ import io.github.vinceglb.filekit.write
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.darwin.Darwin
+import kotlin.coroutines.CoroutineContext
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.io.Buffer
+import kotlinx.io.RawSink
+import kotlinx.io.readByteArray
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import platform.Foundation.NSData
 import platform.Foundation.dataWithBytes
-import kotlin.coroutines.CoroutineContext
 
 actual fun httpClient(config: HttpClientConfig<*>.() -> Unit): HttpClient = HttpClient(Darwin) {
     config(this)
@@ -169,6 +172,20 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 actual suspend fun saveFileToDevice(bytes: ByteArray, baseName: String, extension: String) {
     val file = FileKit.openFileSaver(suggestedName = baseName, defaultExtension = extension)
     file?.write(bytes)
+}
+
+actual suspend fun saveFileToDeviceStream(
+    baseName: String,
+    extension: String,
+    write: suspend (RawSink) -> Unit,
+): SaveResult {
+    // This target has no streaming saver: buffer and reuse the all-in-memory path.
+    // Android is the only platform that streams; the rest just need to satisfy the
+    // expect so the shared code compiles.
+    val bytes = Buffer()
+    write(bytes)
+    saveFileToDevice(bytes = bytes.readByteArray(), baseName = baseName, extension = extension)
+    return SaveResult.Saved
 }
 
 @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
