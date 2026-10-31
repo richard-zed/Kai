@@ -685,13 +685,22 @@ private fun ChatModeScreen(
                                 val history = uiState.history
                                 if (history.isNotEmpty()) {
                                     // Follow new content when the user just sent a message, or when
-                                    // they were already reading at the bottom. Sending is detected
-                                    // via isLoading rather than list geometry, because the count read
-                                    // here is the pre-append one. Every other append (a streamed tool
-                                    // result, a resubmit) must leave a scrolled-up reader alone, which
-                                    // is why the at-bottom test reads state sampled by the effect
-                                    // below and never this effect's stale layoutInfo.
-                                    if (uiState.isLoading || wasAtBottom) {
+                                    // they were already reading at the bottom.
+                                    //
+                                    // Sending is detected from the ROLE of the appended entry, not
+                                    // from isLoading. isLoading stays true for the entire turn, so
+                                    // every streamed tool result appended during it re-ran this
+                                    // effect with the sent-a-message branch taken and yanked a
+                                    // scrolled-up reader to the bottom. That was the actual snap,
+                                    // and it is why three fixes aimed at the at-bottom test changed
+                                    // nothing: the test was never the branch being taken.
+                                    //
+                                    // A user send is the only append whose new tail is a USER
+                                    // entry; tool results arrive as TOOL/TOOL_EXECUTING. Every
+                                    // non-send append is left to the at-bottom test, which reads
+                                    // state sampled after layout by the effect below.
+                                    val sentByUser = history.lastOrNull()?.role == History.Role.USER
+                                    if (sentByUser || wasAtBottom) {
                                         listState.animateScrollToItem(history.lastIndex)
                                     }
                                     val lastMessage = history.last()
@@ -817,20 +826,10 @@ private fun ChatModeScreen(
                                 byAnswerId to suppressed
                             }
 
-                            // Keep wasAtBottom in sync with settled layout. This is the only place
-                            // layoutInfo is trustworthy, because it runs after composition rather
-                            // than before the append that triggered the follow effect.
-                            //
-                            // Compared against the history's last index, NOT against
-                            // totalItemsCount. The count runs ahead of layout during an append:
-                            // it increments before the new row is positioned, while
-                            // visibleItemsInfo still ends at the previous item. Subtracting a
-                            // slack from the count to "allow for" the unpositioned row made the
-                            // stale last index satisfy the comparison exactly, so every append
-                            // read as at-bottom and yanked a scrolled-up reader down. Comparing
-                            // against history.lastIndex cannot do that: an unpositioned row
-                            // means the visible window is genuinely short of the end, which is
-                            // not at-bottom.
+                            // Keep wasAtBottom in sync with settled layout. This is the only
+                            // place layoutInfo is trustworthy, because it runs after
+                            // composition rather than before the append that triggered the
+                            // follow effect.
                             LaunchedEffect(listState) {
                                 snapshotFlow {
                                     val info = listState.layoutInfo
@@ -838,8 +837,16 @@ private fun ChatModeScreen(
                                     // No visible rows means nothing to describe: keep the
                                     // previous verdict rather than asserting at-bottom, or a
                                     // mid-conversation relayout would fake a yes.
+                                    //
+                                    // Both operands come from layoutInfo, never from
+                                    // uiState.history. This effect keys on listState alone, so
+                                    // it launches once and uiState is frozen at that moment;
+                                    // reading history.lastIndex here compared against a stale
+                                    // end for the life of the screen. layoutInfo.totalItemsCount
+                                    // is snapshot state, so this re-evaluates as the list
+                                    // grows, and it counts the same items the indices refer to.
                                     if (info.totalItemsCount == 0 || last == null) null
-                                    else last.index >= uiState.history.lastIndex
+                                    else last.index >= info.totalItemsCount - 1
                                 }.filterNotNull().collect { atBottom -> wasAtBottom = atBottom }
                             }
 
