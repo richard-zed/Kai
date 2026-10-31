@@ -673,19 +673,24 @@ private fun ChatModeScreen(
                             val listState = rememberLazyListState()
                             val componentScope = rememberCoroutineScope()
 
+                            // Whether the reader is parked at the bottom, tracked as state because
+                            // the follow effect below is handed layoutInfo from BEFORE an append.
+                            // Sampled by the settled-geometry effect under it, so it describes the
+                            // last laid-out frame rather than the one the append is about to change.
+                            var wasAtBottom by remember { mutableStateOf(true) }
+
                             LaunchedEffect(uiState.history.size, uiState.isLoading) {
                                 // Capture history at effect start to prevent race conditions
                                 val history = uiState.history
                                 if (history.isNotEmpty()) {
-                                    // Follow new content only when the user just sent a message.
-                                    // Any other append — a streamed tool result, a resubmit —
-                                    // must leave the scroll position alone: this effect's
-                                    // layoutInfo describes the frame BEFORE the append, so an
-                                    // "am I at the bottom?" check compares a stale visible index
-                                    // against the pre-append total and reads true even for a
-                                    // reader who has scrolled up. The scroll-to-bottom button
-                                    // below is the explicit way for them to catch up.
-                                    if (uiState.isLoading) {
+                                    // Follow new content when the user just sent a message, or when
+                                    // they were already reading at the bottom. Sending is detected
+                                    // via isLoading rather than list geometry, because the count read
+                                    // here is the pre-append one. Every other append (a streamed tool
+                                    // result, a resubmit) must leave a scrolled-up reader alone, which
+                                    // is why the at-bottom test reads state sampled by the effect
+                                    // below and never this effect's stale layoutInfo.
+                                    if (uiState.isLoading || wasAtBottom) {
                                         listState.animateScrollToItem(history.lastIndex)
                                     }
                                     val lastMessage = history.last()
@@ -809,6 +814,22 @@ private fun ChatModeScreen(
                                     }
                                 }
                                 byAnswerId to suppressed
+                            }
+
+                            // Keep wasAtBottom in sync with settled layout. This is the only place
+                            // layoutInfo is trustworthy, because it runs after composition rather
+                            // than before the append that triggered the follow effect.
+                            //
+                            // "Near" rather than exact: totalItemsCount already counts an entry
+                            // whose layout has not been positioned yet, so the pre-append bottom
+                            // item reads one short of the end. A small slack closes that gap.
+                            LaunchedEffect(listState) {
+                                snapshotFlow {
+                                    val info = listState.layoutInfo
+                                    val last = info.visibleItemsInfo.lastOrNull()
+                                    info.totalItemsCount == 0 ||
+                                        (last != null && last.index >= info.totalItemsCount - 2)
+                                }.collect { atBottom -> wasAtBottom = atBottom }
                             }
 
                             // Opening a conversation (from history, the sandbox, or a fresh send
