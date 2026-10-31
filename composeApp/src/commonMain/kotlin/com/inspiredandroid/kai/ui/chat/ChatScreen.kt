@@ -123,6 +123,7 @@ import kai.composeapp.generated.resources.scroll_to_bottom_content_description
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import nl.marc_apps.tts.TextToSpeechInstance
@@ -820,16 +821,26 @@ private fun ChatModeScreen(
                             // layoutInfo is trustworthy, because it runs after composition rather
                             // than before the append that triggered the follow effect.
                             //
-                            // "Near" rather than exact: totalItemsCount already counts an entry
-                            // whose layout has not been positioned yet, so the pre-append bottom
-                            // item reads one short of the end. A small slack closes that gap.
+                            // Compared against the history's last index, NOT against
+                            // totalItemsCount. The count runs ahead of layout during an append:
+                            // it increments before the new row is positioned, while
+                            // visibleItemsInfo still ends at the previous item. Subtracting a
+                            // slack from the count to "allow for" the unpositioned row made the
+                            // stale last index satisfy the comparison exactly, so every append
+                            // read as at-bottom and yanked a scrolled-up reader down. Comparing
+                            // against history.lastIndex cannot do that: an unpositioned row
+                            // means the visible window is genuinely short of the end, which is
+                            // not at-bottom.
                             LaunchedEffect(listState) {
                                 snapshotFlow {
                                     val info = listState.layoutInfo
                                     val last = info.visibleItemsInfo.lastOrNull()
-                                    info.totalItemsCount == 0 ||
-                                        (last != null && last.index >= info.totalItemsCount - 2)
-                                }.collect { atBottom -> wasAtBottom = atBottom }
+                                    // No visible rows means nothing to describe: keep the
+                                    // previous verdict rather than asserting at-bottom, or a
+                                    // mid-conversation relayout would fake a yes.
+                                    if (info.totalItemsCount == 0 || last == null) null
+                                    else last.index >= uiState.history.lastIndex
+                                }.filterNotNull().collect { atBottom -> wasAtBottom = atBottom }
                             }
 
                             // Opening a conversation (from history, the sandbox, or a fresh send
