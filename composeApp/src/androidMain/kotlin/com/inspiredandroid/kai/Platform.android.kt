@@ -317,27 +317,19 @@ actual suspend fun saveFileToDeviceStream(
     return withContext(Dispatchers.IO) {
         val dest = FileKit.openFileSaver(suggestedName = baseName, defaultExtension = extension)
             ?: return@withContext SaveResult.Cancelled
-        var wrote = false
-        try {
+        return@withContext try {
             dest.sink().buffered().use { sink ->
                 write(sink)
                 sink.flush()
             }
-            wrote = true
             SaveResult.Saved
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
+            // A partial file may be left behind. PlatformFile has no delete and not
+            // every SAF provider supports DocumentsContract.deleteDocument, so the
+            // cleanup is best-effort at best; the caller is told the save failed.
             SaveResult.Failed
-        } finally {
-            // A half-written file that looks saved is worse than no file.
-            if (!wrote) {
-                try {
-                    dest.delete()
-                } catch (e: IOException) {
-                    // Best effort; the caller is being told the save failed anyway.
-                }
-            }
         }
     }
 }
