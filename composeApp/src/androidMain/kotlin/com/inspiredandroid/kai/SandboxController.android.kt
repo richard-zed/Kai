@@ -337,6 +337,16 @@ class AndroidSandboxController : SandboxController {
         readFileAsText(file, maxBytes, force)
     }
 
+    override suspend fun readFileBytes(path: String): ByteArray? = withContext(Dispatchers.IO) {
+        val file = sandboxManager.fileMap().resolve(path) ?: return@withContext null
+        if (!file.isFile) return@withContext null
+        try {
+            file.readBytes()
+        } catch (e: IOException) {
+            null
+        }
+    }
+
     override suspend fun writeTextFile(path: String, content: String): Boolean = withContext(Dispatchers.IO) {
         val file = sandboxManager.fileMap().resolve(path)
             ?: return@withContext false

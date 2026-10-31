@@ -74,6 +74,16 @@ class BuildFileBrowser(
         }
     }
 
+    override suspend fun readFileBytes(path: String): ByteArray? = withContext(Dispatchers.IO) {
+        val file = resolve(path) ?: return@withContext null
+        if (!file.isFile) return@withContext null
+        try {
+            file.readBytes()
+        } catch (e: IOException) {
+            null
+        }
+    }
+
     override suspend fun writeTextFile(path: String, content: String): Boolean = withContext(Dispatchers.IO) {
         val file = resolve(path) ?: return@withContext false
         if (file.exists() && !file.isFile) return@withContext false

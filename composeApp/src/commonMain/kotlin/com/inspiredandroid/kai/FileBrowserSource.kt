@@ -50,6 +50,13 @@ interface FileBrowserSource {
         force: Boolean = false,
     ): TextFileResult
 
+    /**
+     * Reads [path] verbatim, with no size cap and no decoding. This is the path for
+     * copying a file off the device: [readTextFile] caps at [MAX_BROWSER_TEXT_BYTES]
+     * and lossily replaces non-UTF-8 bytes, so it cannot round-trip a binary.
+     */
+    suspend fun readFileBytes(path: String): ByteArray?
+
     suspend fun writeTextFile(path: String, content: String): Boolean
 
     /** Hands the file to another app on the device. */
@@ -71,6 +78,7 @@ interface FileBrowserSource {
 object NoOpFileBrowserSource : FileBrowserSource {
     override suspend fun listDirectory(path: String): List<SandboxFileEntry> = emptyList()
     override suspend fun readTextFile(path: String, maxBytes: Int, force: Boolean): TextFileResult = TextFileResult.Unreadable
+    override suspend fun readFileBytes(path: String): ByteArray? = null
     override suspend fun writeTextFile(path: String, content: String): Boolean = false
     override suspend fun openFile(path: String): Result<Unit> = Result.failure(UnsupportedOperationException("File browsing is Android-only"))
 
