@@ -27,6 +27,7 @@ import kai.composeapp.generated.resources.sandbox_files_save_to_device_failed
 import kai.composeapp.generated.resources.sandbox_files_save_to_device_success
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.io.Buffer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -263,14 +264,21 @@ class SandboxFileBrowserViewModel(
 
             val result = try {
                 saveFileToDeviceStream(baseName = baseName, extension = extension) { sink ->
-                    val buffer = ByteArray(COPY_CHUNK_BYTES)
+                    val chunk = ByteArray(COPY_CHUNK_BYTES)
+                    // kotlinx-io's RawSink takes a Buffer, not a ByteArray. Staging through
+                    // one keeps the copy bounded: the Buffer is emptied into the sink after
+                    // every chunk, so it never grows past a single read.
+                    val staging = Buffer()
                     while (true) {
                         // Cancellation must be able to interrupt a long copy.
                         currentCoroutineContext().ensureActive()
-                        val read = stream.readChunk(buffer)
+                        val read = stream.readChunk(chunk)
                         if (read < 0) break
                         if (read == 0) continue
-                        sink.write(buffer, 0, read)
+                        // Buffer.write takes (startIndex, endIndex), not (offset, count).
+                        staging.write(chunk, 0, read)
+                        sink.write(staging, read.toLong())
+                        staging.clear()
                     }
                 }
             } finally {
