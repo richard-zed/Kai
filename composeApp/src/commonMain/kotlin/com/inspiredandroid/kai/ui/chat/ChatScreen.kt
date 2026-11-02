@@ -680,7 +680,7 @@ private fun ChatModeScreen(
                             // last laid-out frame rather than the one the append is about to change.
                             var wasAtBottom by remember { mutableStateOf(true) }
 
-                            LaunchedEffect(uiState.history.size, uiState.isLoading) {
+                            LaunchedEffect(uiState.history.size) {
                                 // Capture history at effect start to prevent race conditions
                                 val history = uiState.history
                                 if (history.isNotEmpty()) {
@@ -699,6 +699,14 @@ private fun ChatModeScreen(
                                     // entry; tool results arrive as TOOL/TOOL_EXECUTING. Every
                                     // non-send append is left to the at-bottom test, which reads
                                     // state sampled after layout by the effect below.
+                                    //
+                                    // Keyed on history.size alone. isLoading flips false in the
+                                    // same recomposition that appends the reply, so including it
+                                    // relaunched this effect once more for that one append. The
+                                    // restart cancels the suspended animateScrollToItem, leaving a
+                                    // long reply short of the bottom, and starts TTS a second time
+                                    // on a message already being spoken. Nothing in this body reads
+                                    // isLoading, so the second key bought nothing.
                                     val sentByUser = history.lastOrNull()?.role == History.Role.USER
                                     if (sentByUser || wasAtBottom) {
                                         listState.animateScrollToItem(history.lastIndex)
